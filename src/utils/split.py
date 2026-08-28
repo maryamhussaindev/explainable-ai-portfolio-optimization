@@ -15,7 +15,7 @@ def temporal_split(
     val_end: str,
 ) -> dict:
     df = df.copy()
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Date"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
     df = df.sort_values(["Ticker", "Date"]).reset_index(drop=True)
 
     train_end = pd.to_datetime(train_end)

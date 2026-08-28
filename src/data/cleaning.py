@@ -11,7 +11,7 @@ def load_config(config_path: str = "config.yaml") -> dict:
 
 def clean_stock_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Date"] = pd.to_datetime(df["Date"], utc=True)
     df = df.drop_duplicates(subset=["Date", "Ticker"])
     df = df.sort_values(["Ticker", "Date"]).reset_index(drop=True)
     return df
