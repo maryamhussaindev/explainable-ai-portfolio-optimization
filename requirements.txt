@@ -29,3 +29,4 @@ ruff
 isort
 tqdm
 openpyxl
+tabpfn
