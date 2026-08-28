@@ -1,0 +1,51 @@
+project:
+  name: "Explainable AI-Assisted Portfolio Optimization"
+  version: "1.0.0"
+
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  tickers: []
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+
+features:
+  technical_indicators: true
+  fundamental_data: false
+  sentiment_data: false
+
+model:
+  type: "tabular_foundation"
+  pretrained: true
+  fine_tune: true
+  epochs: 100
+  batch_size: 32
+  learning_rate: 0.001
+
+portfolio:
+  method: "mean_variance"
+  risk_free_rate: 0.02
+  max_weight: 0.25
+  min_weight: 0.0
+  rebalance_frequency: "monthly"
+
+explainability:
+  methods:
+    - "shap"
+    - "lime"
+    - "feature_importance"
+  num_features: 10
+
+evaluation:
+  metrics:
+    - "sharpe_ratio"
+    - "sortino_ratio"
+    - "max_drawdown"
+    - "calmar_ratio"
+    - "alpha"
+    - "beta"
+
+dashboard:
+  host: "127.0.0.1"
+  port: 8050
+  debug: true
