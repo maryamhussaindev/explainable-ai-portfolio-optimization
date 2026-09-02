@@ -23,7 +23,7 @@ FEATURE_COLUMNS = [
 TARGET_COLUMN = "Target_Return"
 
 FEATURE_NAMES = {
-    "Daily_Return": "Daily Return",
+    "Daily_Return": "the daily return",
     "EMA_20": "the 20-day EMA",
     "RSI_14": "RSI",
     "MACD": "MACD",
@@ -36,15 +36,11 @@ FEATURE_NAMES = {
 
 def phrase_feature(feature: str, shap_value: float, feature_value: float, threshold: float) -> str:
     name = FEATURE_NAMES.get(feature, feature)
-    magnitude = "high" if feature_value >= threshold else "low"
+    magnitude = "High" if feature_value >= threshold else "Low"
     if shap_value > 0:
-        if magnitude == "high":
-            return f"High {name.lower()} increased the predicted return."
-        return f"Low {name.lower()} increased the predicted return."
+        return f"{magnitude} {name} increased the predicted return."
     if shap_value < 0:
-        if magnitude == "high":
-            return f"High {name.lower()} reduced the predicted return."
-        return f"Low {name.lower()} reduced the predicted return."
+        return f"{magnitude} {name} reduced the predicted return."
     return f"{name.title()} had little effect on the predicted return."
 
 
@@ -71,64 +67,71 @@ def run_explanation_report(config_path: str = "config.yaml") -> None:
 
     thresholds = test[FEATURE_COLUMNS].median()
 
+    shap_rf = pd.read_csv(shap_rf_file) if shap_rf_file.exists() else None
+    if shap_rf_file.exists() and len(shap_rf) != len(test):
+        print("RF SHAP row count mismatch; skipping.")
+        shap_rf = None
+    if not shap_rf_file.exists():
+        print(f"RF SHAP file not found: {shap_rf_file}")
+
+    shap_xgb = pd.read_csv(shap_xgb_file) if shap_xgb_file.exists() else None
+    if shap_xgb_file.exists() and len(shap_xgb) != len(test):
+        print("XGBoost SHAP row count mismatch; skipping.")
+        shap_xgb = None
+    if not shap_xgb_file.exists():
+        print(f"XGBoost SHAP file not found: {shap_xgb_file}")
+
+    tabpfn_imp = pd.read_csv(tabpfn_imp_file) if tabpfn_imp_file.exists() else None
+    if tabpfn_imp is not None:
+        tabpfn_top = tabpfn_imp.sort_values(
+            "Importance_Mean", ascending=False
+        ).head(3)["Feature"].tolist()
+        tabpfn_sentences = [
+            f"{FEATURE_NAMES.get(f, f)} was among the most important features for TabPFN."
+            for f in tabpfn_top
+        ]
+    else:
+        print(f"TabPFN importance file not found: {tabpfn_imp_file}")
+        tabpfn_sentences = None
+
     rows = []
     for idx, row in test.iterrows():
         date = row["Date"]
         ticker = row["Ticker"]
 
-        if shap_rf_file.exists():
-            shap_rf = pd.read_csv(shap_rf_file)
-            if len(shap_rf) == len(test):
-                shap_row = shap_rf.iloc[idx]
-                top = shap_row.reindex(FEATURE_COLUMNS).abs().nlargest(3).index
-                sentences = [
-                    phrase_feature(f, shap_row[f], row[f], thresholds[f]) for f in top
-                ]
-                rows.append({
-                    "Date": date,
-                    "Ticker": ticker,
-                    "Model": "RandomForest",
-                    "Explanation": " ".join(sentences),
-                })
-            else:
-                print("RF SHAP row count mismatch; skipping.")
-        else:
-            print(f"RF SHAP file not found: {shap_rf_file}")
-
-        if shap_xgb_file.exists():
-            shap_xgb = pd.read_csv(shap_xgb_file)
-            if len(shap_xgb) == len(test):
-                shap_row = shap_xgb.iloc[idx]
-                top = shap_row.reindex(FEATURE_COLUMNS).abs().nlargest(3).index
-                sentences = [
-                    phrase_feature(f, shap_row[f], row[f], thresholds[f]) for f in top
-                ]
-                rows.append({
-                    "Date": date,
-                    "Ticker": ticker,
-                    "Model": "XGBoost",
-                    "Explanation": " ".join(sentences),
-                })
-            else:
-                print("XGBoost SHAP row count mismatch; skipping.")
-        else:
-            print(f"XGBoost SHAP file not found: {shap_xgb_file}")
-
-        if tabpfn_imp_file.exists():
-            importance = pd.read_csv(tabpfn_imp_file)
-            top = importance.sort_values("Importance_Mean", ascending=False).head(3)["Feature"].tolist()
+        if shap_rf is not None:
+            shap_row = shap_rf.iloc[idx]
+            top = shap_row.reindex(FEATURE_COLUMNS).abs().nlargest(3).index
             sentences = [
-                f"{FEATURE_NAMES.get(f, f)} was among the most important features for TabPFN."
-                for f in top
+                phrase_feature(f, shap_row[f], row[f], thresholds[f]) for f in top
             ]
             rows.append({
                 "Date": date,
                 "Ticker": ticker,
-                "Model": "TabPFN",
+                "Model": "RandomForest",
                 "Explanation": " ".join(sentences),
             })
-        else:
-            print(f"TabPFN importance file not found: {tabpfn_imp_file}")
+
+        if shap_xgb is not None:
+            shap_row = shap_xgb.iloc[idx]
+            top = shap_row.reindex(FEATURE_COLUMNS).abs().nlargest(3).index
+            sentences = [
+                phrase_feature(f, shap_row[f], row[f], thresholds[f]) for f in top
+            ]
+            rows.append({
+                "Date": date,
+                "Ticker": ticker,
+                "Model": "XGBoost",
+                "Explanation": " ".join(sentences),
+            })
+
+        if tabpfn_sentences is not None:
+            rows.append({
+                "Date": date,
+                "Ticker": ticker,
+                "Model": "TabPFN",
+                "Explanation": " ".join(tabpfn_sentences),
+            })
 
     if not rows:
         print("No explanations generated.")
