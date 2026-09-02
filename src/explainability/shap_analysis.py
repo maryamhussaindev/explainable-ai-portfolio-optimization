@@ -89,44 +89,15 @@ def explain_tree_model(model, X_test_df, figures_dir: Path, shap_dir: Path, name
 
     save_shap_values(shap_values, X_test_df, shap_dir, name)
 
-    return shap_values
+    return shap_values, explainer
 
 
-def explain_tabpfn(model, X_test_df, figures_dir: Path, shap_dir: Path, name: str) -> None:
-    try:
-        from tabpfn import TabPFNRegressor
-        _ = TabPFNRegressor
-        background = X_test_df.iloc[: min(20, len(X_test_df))]
-        explainer = shap.Explainer(model.predict, background)
-        shap_values = explainer(X_test_df)
-
-        plt.figure()
-        shap.summary_plot(shap_values, X_test_df, show=False)
-        summary_file = figures_dir / f"{name}_shap_summary.png"
-        plt.savefig(summary_file, dpi=150, bbox_inches="tight")
-        plt.close()
-        print(f"Saved summary plot to {summary_file}")
-
-        plt.figure()
-        shap.summary_plot(shap_values, X_test_df, plot_type="bar", show=False)
-        importance_file = figures_dir / f"{name}_shap_feature_importance.png"
-        plt.savefig(importance_file, dpi=150, bbox_inches="tight")
-        plt.close()
-        print(f"Saved feature importance plot to {importance_file}")
-
-        save_shap_values(shap_values, X_test_df, shap_dir, name)
-        return shap_values
-    except Exception as e:
-        print(f"TabPFN SHAP explanation not supported: {e}")
-        return None
-
-
-def explain_one_sample(shap_values, X_test_df, figures_dir: Path, model_name: str) -> None:
+def explain_one_sample(shap_values, explainer, X_test_df, figures_dir: Path, model_name: str) -> None:
     sample_idx = 0
     sample_shap = shap_values[sample_idx]
     base_value = float(np.ravel(shap_values.base_values)[sample_idx]) if hasattr(
         shap_values, "base_values"
-    ) and shap_values.base_values is not None else 0.0
+    ) and shap_values.base_values is not None else float(np.ravel(explainer.expected_value)[0])
 
     sample_explanation = pd.DataFrame({
         "Feature": X_test_df.columns,
@@ -196,23 +167,9 @@ def run_shap_analysis(config_path: str = "config.yaml") -> None:
         xgb_model, X_test_df, figures_dir, shap_dir, "xgboost"
     )
 
-    try:
-        from tabpfn import TabPFNRegressor
-
-        tab_model = TabPFNRegressor(random_state=42)
-        tab_model.fit(X_train.values, y_train.values)
-        results["TabPFN"] = explain_tabpfn(
-            tab_model, X_test_df, figures_dir, shap_dir, "tabpfn"
-        )
-    except Exception as e:
-        print(f"TabPFN model training failed: {e}")
-        results["TabPFN"] = None
-
-    local_shap = None
-    for name, shap_values in results.items():
+    for name, (shap_values, explainer) in results.items():
         if shap_values is not None:
-            explain_one_sample(shap_values, X_test_df, figures_dir, name.lower())
-            break
+            explain_one_sample(shap_values, explainer, X_test_df, figures_dir, name.lower())
 
 
 if __name__ == "__main__":
