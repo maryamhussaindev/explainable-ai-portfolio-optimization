@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
-from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 from tabpfn import TabPFNRegressor
 
 
@@ -21,27 +20,35 @@ FEATURE_COLUMNS = [
     "Momentum_10",
     "Rolling_Volatility_20",
 ]
-TARGET_COLUMN = "Target_Return"
+TARGET_COLUMN = "target_return_5d"
+WINDOW_COLUMN = "window_id"
+
+
+def resolve_device() -> str:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "auto"
 
 
 def run_tabpfn(config_path: str = "config.yaml") -> None:
     config = load_config(config_path)
-    processed_path = Path(config["data"]["processed_path"])
+    splits_path = Path(config.get("splits", {}).get("path", "data/splits"))
     experiments_path = Path(config.get("experiments", {}).get(
         "path", "experiments"
     ))
-    results_path = Path(config.get("results", {}).get(
-        "path", "results"
-    ))
 
-    experiments_path.mkdir(parents=True, exist_ok=True)
-    tables_path = results_path / "tables"
-    tables_path.mkdir(parents=True, exist_ok=True)
+    preds_dir = experiments_path / "predictions"
+    preds_dir.mkdir(parents=True, exist_ok=True)
 
-    train_file = processed_path / "train.csv"
-    test_file = processed_path / "test.csv"
+    train_file = splits_path / "train.csv"
+    test_file = splits_path / "test.csv"
     if not train_file.exists() or not test_file.exists():
-        print("train.csv or test.csv not found. Run split first.")
+        print(f"train.csv or test.csv not found in {splits_path}. Run split first.")
         return
 
     train = pd.read_csv(train_file)
@@ -50,40 +57,48 @@ def run_tabpfn(config_path: str = "config.yaml") -> None:
     train = train.dropna(subset=FEATURE_COLUMNS + [TARGET_COLUMN])
     test = test.dropna(subset=FEATURE_COLUMNS + [TARGET_COLUMN])
 
-    X_train = train[FEATURE_COLUMNS].values
-    y_train = train[TARGET_COLUMN].values
-    X_test = test[FEATURE_COLUMNS].values
-    y_test = test[TARGET_COLUMN].values
-
-    model = TabPFNRegressor(
-        random_state=42,
+    window_ids = sorted(
+        set(test[WINDOW_COLUMN].unique()).intersection(set(train[WINDOW_COLUMN].unique()))
     )
-    model.fit(X_train, y_train)
 
-    predictions = model.predict(X_test)
+    device = resolve_device()
+    print(f"Using device: {device}")
 
-    preds_df = pd.DataFrame({
-        "Date": test["Date"].values,
-        "Ticker": test["Ticker"].values,
-        "Actual_Return": y_test,
-        "Predicted_Return": predictions,
-    })
-    preds_file = experiments_path / "tabpfn_predictions.csv"
+    all_preds = []
+    for window_id in window_ids:
+        train_w = train[train[WINDOW_COLUMN] == window_id]
+        test_w = test[test[WINDOW_COLUMN] == window_id]
+        if len(train_w) == 0 or len(test_w) == 0:
+            continue
+
+        X_train = train_w[FEATURE_COLUMNS].values
+        y_train = train_w[TARGET_COLUMN].values
+        X_test = test_w[FEATURE_COLUMNS].values
+        y_test = test_w[TARGET_COLUMN].values
+
+        model = TabPFNRegressor(
+            random_state=42,
+            device=device,
+        )
+        model.fit(X_train, y_train)
+        predictions = model.predict(X_test)
+
+        all_preds.append(pd.DataFrame({
+            "Date": test_w["Date"].values,
+            "Ticker": test_w["Ticker"].values,
+            "window_id": test_w[WINDOW_COLUMN].values,
+            "Actual_Return": y_test,
+            "Predicted_Return": predictions,
+        }))
+
+    if not all_preds:
+        print("No prediction windows found.")
+        return
+
+    preds_df = pd.concat(all_preds, ignore_index=True)
+    preds_file = preds_dir / "tabpfn_predictions.csv"
     preds_df.to_csv(preds_file, index=False)
-    print(f"Saved predictions to {preds_file}")
-
-    mae = mean_absolute_error(y_test, predictions)
-    rmse = root_mean_squared_error(y_test, predictions)
-
-    metrics_df = pd.DataFrame({
-        "Model": ["TabPFN"],
-        "MAE": [mae],
-        "RMSE": [rmse],
-    })
-    metrics_file = tables_path / "tabpfn_metrics.csv"
-    metrics_df.to_csv(metrics_file, index=False)
-    print(f"Saved metrics to {metrics_file}")
-    print(f"MAE: {mae:.6f}, RMSE: {rmse:.6f}")
+    print(f"Saved predictions for {len(window_ids)} windows to {preds_file}")
 
 
 if __name__ == "__main__":

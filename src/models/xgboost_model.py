@@ -2,7 +2,6 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
-from sklearn.metrics import mean_absolute_error, root_mean_squared_error
 from xgboost import XGBRegressor
 
 
@@ -21,27 +20,24 @@ FEATURE_COLUMNS = [
     "Momentum_10",
     "Rolling_Volatility_20",
 ]
-TARGET_COLUMN = "Target_Return"
+TARGET_COLUMN = "target_return_5d"
+WINDOW_COLUMN = "window_id"
 
 
 def run_xgboost(config_path: str = "config.yaml") -> None:
     config = load_config(config_path)
-    processed_path = Path(config["data"]["processed_path"])
+    splits_path = Path(config.get("splits", {}).get("path", "data/splits"))
     experiments_path = Path(config.get("experiments", {}).get(
         "path", "experiments"
     ))
-    results_path = Path(config.get("results", {}).get(
-        "path", "results"
-    ))
 
-    experiments_path.mkdir(parents=True, exist_ok=True)
-    tables_path = results_path / "tables"
-    tables_path.mkdir(parents=True, exist_ok=True)
+    preds_dir = experiments_path / "predictions"
+    preds_dir.mkdir(parents=True, exist_ok=True)
 
-    train_file = processed_path / "train.csv"
-    test_file = processed_path / "test.csv"
+    train_file = splits_path / "train.csv"
+    test_file = splits_path / "test.csv"
     if not train_file.exists() or not test_file.exists():
-        print("train.csv or test.csv not found. Run split first.")
+        print(f"train.csv or test.csv not found in {splits_path}. Run split first.")
         return
 
     train = pd.read_csv(train_file)
@@ -50,44 +46,48 @@ def run_xgboost(config_path: str = "config.yaml") -> None:
     train = train.dropna(subset=FEATURE_COLUMNS + [TARGET_COLUMN])
     test = test.dropna(subset=FEATURE_COLUMNS + [TARGET_COLUMN])
 
-    X_train = train[FEATURE_COLUMNS]
-    y_train = train[TARGET_COLUMN]
-    X_test = test[FEATURE_COLUMNS]
-    y_test = test[TARGET_COLUMN]
-
-    model = XGBRegressor(
-        n_estimators=100,
-        learning_rate=0.1,
-        max_depth=6,
-        random_state=42,
-        n_jobs=-1,
+    window_ids = sorted(
+        set(test[WINDOW_COLUMN].unique()).intersection(set(train[WINDOW_COLUMN].unique()))
     )
-    model.fit(X_train, y_train)
 
-    predictions = model.predict(X_test)
+    all_preds = []
+    for window_id in window_ids:
+        train_w = train[train[WINDOW_COLUMN] == window_id]
+        test_w = test[test[WINDOW_COLUMN] == window_id]
+        if len(train_w) == 0 or len(test_w) == 0:
+            continue
 
-    preds_df = pd.DataFrame({
-        "Date": test["Date"].values,
-        "Ticker": test["Ticker"].values,
-        "Actual_Return": y_test.values,
-        "Predicted_Return": predictions,
-    })
-    preds_file = experiments_path / "xgb_predictions.csv"
+        X_train = train_w[FEATURE_COLUMNS]
+        y_train = train_w[TARGET_COLUMN]
+        X_test = test_w[FEATURE_COLUMNS]
+        y_test = test_w[TARGET_COLUMN]
+
+        model = XGBRegressor(
+            n_estimators=100,
+            learning_rate=0.1,
+            max_depth=6,
+            random_state=42,
+            n_jobs=-1,
+        )
+        model.fit(X_train, y_train)
+        predictions = model.predict(X_test)
+
+        all_preds.append(pd.DataFrame({
+            "Date": test_w["Date"].values,
+            "Ticker": test_w["Ticker"].values,
+            "window_id": test_w[WINDOW_COLUMN].values,
+            "Actual_Return": y_test.values,
+            "Predicted_Return": predictions,
+        }))
+
+    if not all_preds:
+        print("No prediction windows found.")
+        return
+
+    preds_df = pd.concat(all_preds, ignore_index=True)
+    preds_file = preds_dir / "xgboost_predictions.csv"
     preds_df.to_csv(preds_file, index=False)
-    print(f"Saved predictions to {preds_file}")
-
-    mae = mean_absolute_error(y_test, predictions)
-    rmse = root_mean_squared_error(y_test, predictions)
-
-    metrics_df = pd.DataFrame({
-        "Model": ["XGBoost"],
-        "MAE": [mae],
-        "RMSE": [rmse],
-    })
-    metrics_file = tables_path / "xgboost_metrics.csv"
-    metrics_df.to_csv(metrics_file, index=False)
-    print(f"Saved metrics to {metrics_file}")
-    print(f"MAE: {mae:.6f}, RMSE: {rmse:.6f}")
+    print(f"Saved predictions for {len(window_ids)} windows to {preds_file}")
 
 
 if __name__ == "__main__":

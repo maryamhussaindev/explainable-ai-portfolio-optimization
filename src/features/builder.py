@@ -16,7 +16,8 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     for ticker, group in df.groupby("Ticker"):
         group = group.sort_values("Date").reset_index(drop=True)
         group = add_technical_features(group)
-        group["Target_Return"] = group["Close"].pct_change().shift(-1)
+        group["target_return_5d"] = (group["Close"].shift(-5) / group["Close"]) - 1
+        group = group.dropna(subset=["target_return_5d"])
         featured.append(group)
     return pd.concat(featured, ignore_index=True)
 
