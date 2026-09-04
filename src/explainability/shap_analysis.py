@@ -63,9 +63,36 @@ def save_shap_values(shap_values, feature_df, out_dir: Path, name: str) -> None:
     print(f"Saved SHAP values to {out_dir / f'{name}_shap_values.csv'}")
 
 
+def explain_one_sample(
+    shap_values, X_test_df, figures_dir: Path, model_name: str, base_value: float
+) -> None:
+    sample_idx = 0
+    sample_shap = np.asarray(shap_values)[sample_idx].flatten()
+
+    waterfall_path = figures_dir / f"{model_name}_shap_local_waterfall.png"
+
+    try:
+        shap.waterfall_plot(
+            shap.Explanation(
+                values=sample_shap,
+                base_values=float(base_value),
+                data=X_test_df.iloc[sample_idx].values.flatten(),
+                feature_names=X_test_df.columns.tolist(),
+            ),
+            max_display=10,
+            show=False,
+        )
+        plt.savefig(waterfall_path, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved local explanation to {waterfall_path} ({model_name})")
+    except Exception as e:
+        print(f"Could not create waterfall plot for {model_name}: {e}")
+
+
 def explain_tree_model(model, X_test_df, figures_dir: Path, shap_dir: Path, name: str) -> None:
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X_test_df)
+    base_value = float(np.ravel(explainer.expected_value)[0])
 
     plt.figure()
     shap.summary_plot(shap_values, X_test_df, show=False)
@@ -75,7 +102,6 @@ def explain_tree_model(model, X_test_df, figures_dir: Path, shap_dir: Path, name
     print(f"Saved summary plot to {summary_file}")
 
     plt.figure()
-    shap_summary_importance = np.abs(np.asarray(shap_values)).mean(axis=0)
     shap.summary_plot(
         shap_values,
         X_test_df,
@@ -89,68 +115,9 @@ def explain_tree_model(model, X_test_df, figures_dir: Path, shap_dir: Path, name
 
     save_shap_values(shap_values, X_test_df, shap_dir, name)
 
+    explain_one_sample(shap_values, X_test_df, figures_dir, name, base_value)
+
     return shap_values
-
-
-def explain_tabpfn(model, X_test_df, figures_dir: Path, shap_dir: Path, name: str) -> None:
-    try:
-        from tabpfn import TabPFNRegressor
-        _ = TabPFNRegressor
-        background = X_test_df.iloc[: min(20, len(X_test_df))]
-        explainer = shap.Explainer(model.predict, background)
-        shap_values = explainer(X_test_df)
-
-        plt.figure()
-        shap.summary_plot(shap_values, X_test_df, show=False)
-        summary_file = figures_dir / f"{name}_shap_summary.png"
-        plt.savefig(summary_file, dpi=150, bbox_inches="tight")
-        plt.close()
-        print(f"Saved summary plot to {summary_file}")
-
-        plt.figure()
-        shap.summary_plot(shap_values, X_test_df, plot_type="bar", show=False)
-        importance_file = figures_dir / f"{name}_shap_feature_importance.png"
-        plt.savefig(importance_file, dpi=150, bbox_inches="tight")
-        plt.close()
-        print(f"Saved feature importance plot to {importance_file}")
-
-        save_shap_values(shap_values, X_test_df, shap_dir, name)
-        return shap_values
-    except Exception as e:
-        print(f"TabPFN SHAP explanation not supported: {e}")
-        return None
-
-
-def explain_one_sample(shap_values, X_test_df, figures_dir: Path, model_name: str) -> None:
-    sample_idx = 0
-    sample_shap = shap_values[sample_idx]
-    base_value = float(np.ravel(shap_values.base_values)[sample_idx]) if hasattr(
-        shap_values, "base_values"
-    ) and shap_values.base_values is not None else 0.0
-
-    sample_explanation = pd.DataFrame({
-        "Feature": X_test_df.columns,
-        "SHAP_Value": np.asarray(sample_shap).flatten(),
-    }).sort_values("SHAP_Value", key=abs, ascending=False)
-
-    waterfall_path = figures_dir / f"{model_name}_shap_local_waterfall.png"
-
-    try:
-        shap.waterfall_plot(
-            shap.Explanation(
-                values=np.asarray(sample_shap).flatten(),
-                base_values=base_value,
-                data=X_test_df.iloc[sample_idx].values.flatten(),
-                feature_names=X_test_df.columns.tolist(),
-            ),
-            max_display=10,
-            show=False,
-        )
-        plt.savefig(waterfall_path, dpi=150, bbox_inches="tight")
-        plt.close()
-        print(f"Saved local explanation to {waterfall_path} ({model_name})")
-    except Exception as e:
-        print(f"Could not create waterfall plot for {model_name}: {e}")
 
 
 def run_shap_analysis(config_path: str = "config.yaml") -> None:
@@ -195,24 +162,6 @@ def run_shap_analysis(config_path: str = "config.yaml") -> None:
     results["XGBoost"] = explain_tree_model(
         xgb_model, X_test_df, figures_dir, shap_dir, "xgboost"
     )
-
-    try:
-        from tabpfn import TabPFNRegressor
-
-        tab_model = TabPFNRegressor(random_state=42)
-        tab_model.fit(X_train.values, y_train.values)
-        results["TabPFN"] = explain_tabpfn(
-            tab_model, X_test_df, figures_dir, shap_dir, "tabpfn"
-        )
-    except Exception as e:
-        print(f"TabPFN model training failed: {e}")
-        results["TabPFN"] = None
-
-    local_shap = None
-    for name, shap_values in results.items():
-        if shap_values is not None:
-            explain_one_sample(shap_values, X_test_df, figures_dir, name.lower())
-            break
 
 
 if __name__ == "__main__":
