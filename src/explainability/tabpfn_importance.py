@@ -27,8 +27,11 @@ FEATURE_COLUMNS = [
 ]
 TARGET_COLUMN = "target_return_5d"
 WINDOW_COLUMN = "window_id"
+TICKER_COLUMN = "Ticker"
+DATE_COLUMN = "Date"
 
-N_REPEATS = 5
+N_REPEATS = 3
+TRAIN_ROWS_PER_TICKER = 1000
 
 
 def resolve_device() -> str:
@@ -39,7 +42,7 @@ def resolve_device() -> str:
             return "cuda"
     except Exception:
         pass
-    return "auto"
+    return "cpu"
 
 
 def neg_mse_scorer(model, X, y):
@@ -69,11 +72,14 @@ def run_tabpfn_importance(config_path: str = "config.yaml") -> None:
     train = train.dropna(subset=FEATURE_COLUMNS + [TARGET_COLUMN])
     test = test.dropna(subset=FEATURE_COLUMNS + [TARGET_COLUMN])
 
-    window_ids = sorted(
-        set(test[WINDOW_COLUMN].unique()).intersection(
-            set(train[WINDOW_COLUMN].unique())
+    tickers = sorted(
+        set(train[TICKER_COLUMN].unique()).intersection(
+            set(test[TICKER_COLUMN].unique())
         )
     )
+    if not tickers:
+        print("No tickers found in common between train and test.")
+        return
 
     from tabpfn import TabPFNRegressor
 
@@ -82,16 +88,18 @@ def run_tabpfn_importance(config_path: str = "config.yaml") -> None:
 
     mean_importances = []
     std_importances = []
-    for window_id in window_ids:
-        train_w = train[train[WINDOW_COLUMN] == window_id]
-        test_w = test[test[WINDOW_COLUMN] == window_id]
-        if len(train_w) == 0 or len(test_w) == 0:
-            continue
+    for ticker in tickers:
+        train_t = (
+            train[train[TICKER_COLUMN] == ticker]
+            .sort_values(DATE_COLUMN)
+            .tail(TRAIN_ROWS_PER_TICKER)
+        )
+        test_t = test[test[TICKER_COLUMN] == ticker]
 
-        X_train = train_w[FEATURE_COLUMNS].values
-        y_train = train_w[TARGET_COLUMN].values
-        X_test = test_w[FEATURE_COLUMNS].values
-        y_test = test_w[TARGET_COLUMN].values
+        X_train = train_t[FEATURE_COLUMNS].values
+        y_train = train_t[TARGET_COLUMN].values
+        X_test = test_t[FEATURE_COLUMNS].values
+        y_test = test_t[TARGET_COLUMN].values
 
         model = TabPFNRegressor(
             random_state=42,
@@ -110,9 +118,13 @@ def run_tabpfn_importance(config_path: str = "config.yaml") -> None:
         )
         mean_importances.append(result.importances_mean)
         std_importances.append(result.importances_std)
+        print(
+            f"Ticker {ticker}: permutation importance done "
+            f"({len(X_test)} test rows, {len(X_train)} train rows)."
+        )
 
     if not mean_importances:
-        print("No prediction windows found.")
+        print("No importance results computed.")
         return
 
     importance_mean = np.mean(mean_importances, axis=0)
@@ -138,7 +150,7 @@ def run_tabpfn_importance(config_path: str = "config.yaml") -> None:
         alpha=0.85,
     )
     plt.gca().invert_yaxis()
-    plt.title("TabPFN Feature Importance (Permutation, Rolling Test Set)")
+    plt.title("TabPFN Feature Importance (Permutation, Complete Rolling Test Set)")
     plt.xlabel("Mean Importance (Permutation - Negative MSE)")
     plt.tight_layout()
     fig_path = figures_dir / "tabpfn_feature_importance.png"
