@@ -1,8 +1,24 @@
+### Setup (recommended)
+
+Create and activate a virtual environment, then install the dependencies:
+
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+
+# macOS / Linux
+python -m venv venv
+source venv/bin/activate
+```
+
 ### Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
+
+From here on, use `python -m ...` while the virtual environment is active.
 
 ---
 
@@ -81,13 +97,55 @@ python -m src.models.tabpfm_model
 python -m src.evaluation.prediction_metrics
 ```
 
-### 10. Generate SHAP explanations *(current work in progress)*
+### 10. Explain the models
+
+Random Forest and XGBoost use SHAP (summary plot, feature importance, waterfall plot, and SHAP values CSV):
 
 ```bash
 python -m src.explainability.shap_analysis
 ```
 
-> **Note:** SHAP generation for TabPFN is computationally expensive on CPU and may take considerable time.
+TabPFN uses permutation importance instead of SHAP (run on the complete rolling test dataset):
+
+```bash
+python -m src.explainability.tabpfn_importance
+```
+
+Generate human-readable prediction explanations for each stock/date:
+
+```bash
+python -m src.explainability.explanation_report
+```
+
+> **Note:** TabPFN models are trained per rolling window. The permutation importance step fits 5 TabPFN models (one per ticker) and evaluates on the full rolling test set — allow enough time on a CPU-only machine.
+
+### 11. Run the portfolio backtest
+
+Rebalances every 5 trading days and compares Equal Weight, Markowitz, Random Forest, XGBoost, and TabPFN portfolios:
+
+```bash
+python -m src.portfolio.backtest
+```
+
+### 12. Launch the dashboard
+
+```bash
+cd dashboard
+python app.py
+```
+
+Then open the dashboard in your browser:
+
+```
+http://127.0.0.1:5000
+```
+
+The dashboard has four pages:
+
+- **Overview** - Model comparison table, best model by RMSE, window performance chart.
+- **Portfolio** - Portfolio metrics, allocation table, interactive allocation pie chart, growth charts.
+- **Explainability** - SHAP summaries for Random Forest / XGBoost, TabPFN permutation importance, and per-stock prediction explanations.
+- **5-Day Predictions** - Latest rolling-window predictions with BUY / HOLD / SELL signals, an interactive chart, and today's investment recommendation.
 
 ---
 
@@ -96,12 +154,16 @@ python -m src.explainability.shap_analysis
 After running the completed steps, the project generates:
 
 ```text
-data/processed/
-experiments/
-results/figures/
-results/tables/
+data/processed/        cleaned price data, engineered technical features, train/test splits
+data/splits/           rolling train/validation/test splits for the 5-day evaluation
+experiments/predictions/  rolling-window predictions from Random Forest, XGBoost, and TabPFN
+experiments/shap/      SHAP values for Random Forest and XGBoost
+experiments/portfolio_weights.csv   portfolio weights per rebalance period and strategy
+results/tables/        model comparison, portfolio metrics, permutation importance, explanations
+results/figures/       SHAP plots, feature importance, portfolio growth charts
+dashboard/             Flask dashboard (app.py + templates + static assets)
 ```
 
-These folders contain processed datasets, model predictions, evaluation metrics, portfolio results, and SHAP visualizations.
+These folders contain processed datasets, model predictions, evaluation metrics, portfolio results, and model explanations.
 
 ---
