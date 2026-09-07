@@ -1,0 +1,97 @@
+{% extends "layout.html" %}
+{% block title %}Overview | Explainable AI Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3 mb-1">Explainable AI-Assisted Portfolio Optimization Using TabPFN</h1>
+        <p class="text-muted mb-0">Model comparison, portfolio strategies, and model explanations.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-semibold">Model Comparison</div>
+            <div class="card-body">
+                {% if comparison is not none and not comparison.empty %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped align-middle mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                {% for col in display_cols %}
+                                <th>
+                                    {% if col.lower() == 'r2' %}R&sup2;
+                                    {% elif col.lower() == 'directional_accuracy' %}Directional Accuracy
+                                    {% else %}{{ col }}{% endif %}
+                                </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in comparison.iterrows() %}
+                            {% set rec = row[1] %}
+                            <tr>
+                                {% for col in display_cols %}
+                                <td>{{ '%.4f'|format(rec[col]) if rec[col] is number else rec[col] }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if best_model %}
+<div class="row mb-4">
+    <div class="col">
+        <div class="card shadow-sm border-0 highlight-card">
+            <div class="card-body text-center py-4">
+                <div class="h6 text-uppercase text-muted mb-2">Best Model (Lowest RMSE)</div>
+                <div class="display-6 fw-bold text-success">{{ best_model.get('Model') or best_model.get(comparison.columns[0]) }}</div>
+                <div class="mt-3 row justify-content-center g-3">
+                    {% for key, value in best_model.items() %}
+                    {% if key|lower != 'model' %}
+                    <div class="col-auto">
+                        <div class="metric-chip">
+                            <div class="metric-chip-label">
+                                {% if key|lower == 'r2' %}R&sup2;
+                                {% elif key|lower == 'directional_accuracy' %}Directional Accuracy
+                                {% else %}{{ key }}{% endif %}
+                            </div>
+                            <div class="metric-chip-value">{{ '%.4f'|format(value) if value is number else value }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white fw-semibold">Window Performance</div>
+            <div class="card-body text-center">
+                {% if window_img %}
+                <img src="{{ url_for('image', name='window_performance') }}"
+                     alt="Window performance" class="img-fluid rounded">
+                {% else %}
+                <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

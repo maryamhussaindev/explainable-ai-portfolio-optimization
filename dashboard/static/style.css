@@ -1,0 +1,92 @@
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1 1 auto;
+}
+
+.navbar-brand {
+    letter-spacing: 0.02em;
+}
+
+.card {
+    border-radius: 0.6rem;
+}
+
+.card-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    font-weight: 600;
+}
+
+.highlight-card {
+    border-left: 5px solid #198754;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fffb 100%);
+}
+
+.metric-chip {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    text-align: center;
+    min-width: 130px;
+}
+
+.metric-chip-label {
+    font-size: 0.72rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.metric-chip-value {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.metric-label {
+    letter-spacing: 0.03em;
+}
+
+.metric-value {
+    font-weight: 700;
+}
+
+.rec-card {
+    border-left: 5px solid #198754;
+    background: linear-gradient(180deg, #ffffff 0%, #f4fbf7 100%);
+}
+
+.trend-up-icon {
+    color: #198754;
+    display: inline-flex;
+    align-items: center;
+}
+
+.rec-stat {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.6rem;
+}
+
+.rec-percent {
+    color: #198754;
+}
+
+.table thead th {
+    white-space: nowrap;
+}
+
+img.rounded {
+    border: 1px solid #e9ecef;
+    background: #fff;
+}
+
+@media (max-width: 575.98px) {
+    .metric-value {
+        font-size: 1.4rem;
+    }
+}

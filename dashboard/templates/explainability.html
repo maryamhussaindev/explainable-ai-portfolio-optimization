@@ -1,0 +1,138 @@
+{% extends "layout.html" %}
+{% block title %}Explainability | Explainable AI Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h3 mb-1">Model Explainability</h1>
+        <p class="text-muted mb-0">SHAP summaries for Random Forest and XGBoost, TabPFN permutation importance, and human-readable explanations.</p>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-semibold">Random Forest SHAP Summary</div>
+            <div class="card-body text-center">
+                {% if rf_img %}
+                <img src="{{ url_for('image', name='random_forest_shap_summary') }}"
+                     alt="Random Forest SHAP summary" class="img-fluid rounded">
+                {% else %}
+                <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-semibold">XGBoost SHAP Summary</div>
+            <div class="card-body text-center">
+                {% if xgb_img %}
+                <img src="{{ url_for('image', name='xgboost_shap_summary') }}"
+                     alt="XGBoost SHAP summary" class="img-fluid rounded">
+                {% else %}
+                <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-semibold">TabPFN Feature Importance (Permutation)</div>
+            <div class="card-body text-center">
+                {% if tabpfn_img %}
+                <img src="{{ url_for('image', name='tabpfn_feature_importance') }}"
+                     alt="TabPFN feature importance" class="img-fluid rounded">
+                {% else %}
+                <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white fw-semibold">Feature Importance</div>
+            <div class="card-body">
+                {% if tabpfn_importance is not none and not tabpfn_importance.empty %}
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-hover table-striped align-middle mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Feature</th>
+                                <th>Importance_Mean</th>
+                                <th>Importance_Std</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in tabpfn_importance.to_dict('records') %}
+                            <tr>
+                                <td class="fw-semibold">{{ rec['Feature'] }}</td>
+                                <td>{{ '%.6f'|format(rec['Importance_Mean']) }}</td>
+                                <td>{{ '%.6f'|format(rec['Importance_Std']) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white fw-semibold">Stock Explanation Selector</div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('explainability') }}" class="row g-3 align-items-center">
+            <div class="col-auto">
+                <label for="ticker" class="col-form-label fw-semibold">Stock</label>
+            </div>
+            <div class="col-auto">
+                <select class="form-select" name="ticker" id="ticker">
+                    {% for t in tickers %}
+                    <option value="{{ t }}" {% if t == selected %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-dark">Show Explanations</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-semibold">Explanations for {{ selected }}</div>
+    <div class="card-body">
+        {% if explanations is not none and not explanations.empty %}
+        <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        {% for col in explanations.columns %}<th>{{ col }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in explanations.to_dict('records') %}
+                    <tr>
+                        {% for col in explanations.columns %}
+                        <td>{{ rec[col] }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-warning mb-0">{{ missing_message }}</div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
